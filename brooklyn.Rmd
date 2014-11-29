@@ -17,6 +17,10 @@ d <- cbind(ds[, names(ds)[-c(1:3)]],
            ao[, names(ao)[-c(1:3)]])
 ```
 
+Find code in
+
+https://github.com/dunajevas/brooklyn
+
 ## JLH score
 
 * (foregroundPercent - backgroundPercent) favors common terms
