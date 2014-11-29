@@ -140,7 +140,7 @@ renderPlot({
    grid.arrange(
      arrangeGrob(
        qplot(data = subset(
-         arrange(pm, pm$zip, -pm$value),
+         arrange(pm, pm$zip, -abs(pm$value)),
          zip == input$zip)[1:10, c("variable", "value")],
          x = reorder(variable, value),
          y = value,
