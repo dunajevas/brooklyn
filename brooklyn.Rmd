@@ -1,0 +1,153 @@
+---
+title: "Uncommon Neighborhoods in Brooklyn"
+author: "Edgaras Dunajevas"
+runtime: shiny
+output: ioslides_presentation
+---
+
+## Idea
+
+http://www.infoq.com/presentations/elasticsearch-revealing-uncommonly-common
+
+```{r}
+options(stringsAsFactors = F)
+ds <- read.csv2("PIL-NYC-Dataset.csv", dec = ".")
+ao <- read.csv2("PIL-NYC-AreaObjectTotals.csv", dec = ".")
+d <- cbind(ds[, names(ds)[-c(1:3)]],
+           ao[, names(ao)[-c(1:3)]])
+```
+
+## JLH score
+
+* (foregroundPercent - backgroundPercent) favors common terms
+* (foregroundPercent / backgroundPercent) favors rare terms.
+Rare vs common is essentially a precision vs recall balance
+
+```{r}
+jlh <- function(col){
+  all <- sum(col)
+  if(all == max(col) | sum(col) < 4){
+    NULL
+  }else{
+    p <- col/all
+      avg <- mean(p)
+    (p - avg) * (p / avg)  
+  }
+}
+jlhL <- lapply(d, jlh)
+```
+
+## JLH Plot
+
+```{r, echo = F, message = F}
+library(ggplot2)
+library(reshape)
+library(plyr)
+library(gridExtra)
+library(stringr)
+
+sh <- read.csv2("PIL-NYC-AreaGeometry.csv")
+
+shD <- ddply(sh[, c("name", "st_astext")], .(name), function(d) {
+  text <- as.character(d$st_astext)
+  m <- strsplit(substr(text, 16, nchar(text)-3), ",")[[1]]
+  df <- data.frame(matrix(as.numeric(do.call(rbind, strsplit(m, " "))), ncol = 2))
+  names(df) <- c("lat", "long")
+  df
+  })
+
+labl <- ddply(shD, .(name), summarize, x = mean(lat), y = mean(long))
+labl$name <- substr(labl$name, 4, 5)
+#labl$name[labl$name==11218] <- paste0("\n", 11218)
+#labl$name[labl$name==11204] <- paste0("\n", 11204)
+#labl$name
+
+brooks <- 
+  ggplot(data = labl, aes(x = x, y = y, label = name))+
+  geom_text(size = I(4))+
+  geom_polygon(data = shD,
+               fill = NA,
+               aes(x = lat,
+                   y = long,
+                   geom = "polygon",
+                   color = factor(name)))+
+  theme(axis.line = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        panel.background = element_blank(),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_blank())
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+cols <- c(list(zip = substr(ds$name, 4, 5)), jlhL)
+p <- as.data.frame(cols[!sapply(cols, is.null)])
+tb <- table(sapply(strsplit(names(p), "_"), "[[", 1))
+
+pm <- melt(p, id = "zip")
+pm$group <- sapply(strsplit(as.character(pm$variable), "_"), "[[", 1)
+pm$group[pm$group %in% names(tb[tb < 5])] <- "other"
+labels <- ddply(pm, .(group), summarise, maxVal = max(abs(value)))
+
+inputPanel(
+  selectInput("group",
+              label = "Group",
+              choices = labels[order(-labels$maxVal), "group"],
+              selected = "total")
+ )
+
+renderPlot({
+  grid.arrange(
+    arrangeGrob(
+    qplot(data = subset(pm, group == input$group),
+          x = factor(zip),
+          y = variable,
+          fill = value,
+          geom = "tile",
+          color=I("#E6E6E6"))+
+      scale_fill_gradient2()+
+      xlab("zip code - 112xx")+
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+    brooks, ncol = 2, widths = c(2, 1)))
+    })
+```
+
+
+## Neighborhoods
+
+```{r, echo = F}
+hoods <- ddply(pm, .(zip), summarize, max = max(value))
+
+hs <- hoods[order(-hoods$max), "zip"]
+inputPanel(
+  selectInput("zip", label = "Zip 112xx",
+              choices = hs,
+              selected = hs[1])
+ )
+
+renderPlot({
+   grid.arrange(
+     arrangeGrob(
+       qplot(data = subset(
+         arrange(pm, pm$zip, -pm$value),
+         zip == input$zip)[1:10, c("variable", "value")],
+         x = reorder(variable, value),
+         y = value,
+         geom = "bar",
+         stat = "identity")+
+         coord_flip()+
+         xlab("variable"),
+       brooks,
+       ncol = 2,
+       widths = c(2, 1)
+       )
+     )
+})
+```
